@@ -88,12 +88,4 @@ export type BucketSubdirectory = {
    * Example: "arn:aws:iam::123456789012:role/data-processor-role"
    */
   targetLambdaExecutionRoleArn: string;
-
-  /**
-   * When true, validates JSON syntax and structure before processing
-   * Requires downloading entire file - impacts performance and costs for large files
-   * When false (default), skips validation and passes file directly to target Lambda
-   * Consider increasing LAMBDA.memorySizeMb if enabling validation for large files
-   */
-  validateArrivals?: boolean;
 }

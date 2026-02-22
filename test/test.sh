@@ -19,8 +19,7 @@ if [ $# -eq 0 ]; then
   echo "Available scenarios:"
   echo "  scenario1 - Upload JSON to bucket root (no processing expected)"
   echo "  scenario2 - Upload valid person data to person-full/ (triggers Lambda)"
-  echo "  scenario3 - Upload invalid JSON to person-delta/ (triggers error handling)"
-  echo "  scenario4 - Upload valid delta data to person-delta/ (triggers Lambda)"
+  echo "  scenario3 - Upload valid delta data to person-delta/ (triggers Lambda)"
   echo ""
   echo "Example: ./test.sh scenario2"
   echo ""
@@ -59,7 +58,7 @@ case $SCENARIO in
     ;;
 
   scenario2)
-    # Scenario 2: Upload valid person data to person-full/ (should trigger target Lambda)
+    # Scenario 2: Upload valid person data to person-full/ (should trigger subscriber Lambda)
     echo "Scenario 2: Upload valid person data to person-full/ (should trigger Lambda)"
     echo "---"
     cat <<'EOF' | aws s3 cp - "s3://$BUCKET_NAME/person-full/test-valid-person-data.json" \
@@ -116,38 +115,15 @@ EOF
       echo "    • Event processor validates JSON"
       echo "    • File renamed to full-{timestamp}.json"
       echo "    • Expiration tag set (7 days)"
-      echo "    • Target Lambda invoked with S3 path"
+      echo "    • Subscriber Lambda invoked with S3 path"
     else
       echo "✗ Failed to upload"
     fi
     ;;
 
   scenario3)
-    # Scenario 3: Upload invalid JSON to person-delta/ (should move to errors/)
-    echo "Scenario 3: Upload invalid JSON to person-delta/ (should trigger error handling)"
-    echo "---"
-    echo '{this is not: valid JSON syntax, missing quotes and has trailing comma,}' | \
-      aws s3 cp - "s3://$BUCKET_NAME/person-delta/test-invalid-json.json" \
-      --region "$REGION" \
-      --content-type "application/json"
-
-    if [ $? -eq 0 ]; then
-      echo "✓ Successfully uploaded invalid JSON to person-delta/"
-      echo "  Expected outcome:"
-      echo "    • Event processor detects invalid JSON"
-      echo "    • File moved to person-delta/errors/ with timestamp"
-      echo "    • Renamed to invalid-json-{timestamp}.json"
-      echo "    • Tagged with error reason"
-      echo "    • Lifecycle expiration applies (3 days)"
-      echo "    • No target Lambda invocation"
-    else
-      echo "✗ Failed to upload"
-    fi
-    ;;
-
-  scenario4)
-    # Scenario 4 (Bonus): Upload to person-delta/ with valid JSON
-    echo "Scenario 4: Upload valid delta data to person-delta/"
+    # Scenario 3: Upload to person-delta/ with valid JSON
+    echo "Scenario 3: Upload valid delta data to person-delta/"
     echo "---"
     cat <<'EOF' | aws s3 cp - "s3://$BUCKET_NAME/person-delta/test-delta-data.json" \
       --region "$REGION" \
@@ -180,7 +156,7 @@ EOF
       echo "    • Event processor validates JSON"
       echo "    • File renamed to delta-{timestamp}.json"
       echo "    • Expiration tag set (3 days)"
-      echo "    • Target Lambda invoked with S3 path"
+      echo "    • Subscriber Lambda invoked with S3 path"
     else
       echo "✗ Failed to upload"
     fi
@@ -192,8 +168,7 @@ EOF
     echo "Available scenarios:"
     echo "  scenario1 - Upload JSON to bucket root"
     echo "  scenario2 - Upload valid person data to person-full/"
-    echo "  scenario3 - Upload invalid JSON to person-delta/"
-    echo "  scenario4 - Upload valid delta data to person-delta/"
+    echo "  scenario3 - Upload valid delta data to person-delta/"
     echo ""
     echo "Example: ./test.sh scenario2"
     exit 1
@@ -206,10 +181,11 @@ echo "Test complete!"
 echo ""
 echo "To verify results:"
 echo "  1. Check CloudWatch Logs for event processor Lambda"
-echo "  2. Check CloudWatch Logs for target Lambda (if CREATE_TEST_TARGET_LAMBDA=true)"
+echo "  2. Check CloudWatch Logs for subscriber Lambda (if LAMBDA.subscriberForTesting is configured)"
 echo "  3. List bucket contents:"
 echo "     aws s3 ls s3://$BUCKET_NAME/ --recursive --region $REGION"
 echo "  4. Check for error files:"
+echo "     aws s3 ls s3://$BUCKET_NAME/person-full/errors/ --region $REGION"
 echo "     aws s3 ls s3://$BUCKET_NAME/person-delta/errors/ --region $REGION"
 echo ""
 echo "To clean up test files:"

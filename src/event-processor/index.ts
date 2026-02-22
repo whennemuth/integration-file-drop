@@ -1,7 +1,6 @@
 import { S3Event, S3EventRecord, Context as LambdaContext } from 'aws-lambda';
 import { 
   S3Client, 
-  GetObjectCommand, 
   CopyObjectCommand, 
   DeleteObjectCommand
 } from '@aws-sdk/client-s3';
@@ -12,12 +11,6 @@ const s3Client = new S3Client({});
 const lambdaClient = new LambdaClient({});
 
 const BUCKET_CONFIG = JSON.parse(process.env.BUCKET_CONFIG || '{"subdirectories": []}');
-
-interface ProcessingResult {
-  success: boolean;
-  message: string;
-  key?: string;
-}
 
 /**
  * Lambda handler for processing S3 events
@@ -53,12 +46,6 @@ async function processRecord(record: S3EventRecord): Promise<void> {
 
   console.log(`Matched subfolder: ${subfolderConfig.path}`);
 
-  // Skip if file is in errors subdirectory (already processed and marked as invalid)
-  if (key.includes('/errors/')) {
-    console.log(`File is in errors subdirectory. Skipping to avoid reprocessing invalid files.`);
-    return;
-  }
-
   // Skip if file has already been processed (matches date-based naming pattern)
   // Pattern: {subfolder}/{prefix}-{ISO_TIMESTAMP}.json (e.g., full-2026-02-20T16:57:35.356Z.json)
   const filename = key.split('/').pop() || '';
@@ -66,37 +53,6 @@ async function processRecord(record: S3EventRecord): Promise<void> {
   if (dateBasedPattern.test(filename)) {
     console.log(`File ${filename} has already been processed (matches date-based pattern). Skipping to avoid recursive loop.`);
     return;
-  }
-
-  // Validate arrivals if configured (requires downloading file)
-  if (subfolderConfig.validateArrivals) {
-    console.log(`Validation enabled for ${subfolderConfig.path}. Downloading and validating file...`);
-    
-    // Retrieve object content
-    const objectContent = await getObjectContent(bucket, key);
-    if (!objectContent) {
-      console.error(`Failed to retrieve object content for: ${key}`);
-      return;
-    }
-
-    // Validate JSON
-    const jsonData = validateJson(objectContent);
-    if (!jsonData) {
-      console.error(`Invalid JSON in object: ${key}`);
-      await moveToErrorsSubfolder(bucket, key, subfolderConfig.path, 'Invalid JSON format');
-      return;
-    }
-
-    // Validate JSON structure
-    if (!validateJsonStructure(jsonData)) {
-      console.error(`JSON structure validation failed for: ${key}`);
-      await moveToErrorsSubfolder(bucket, key, subfolderConfig.path, 'Invalid JSON structure');
-      return;
-    }
-    
-    console.log(`Validation successful for ${key}`);
-  } else {
-    console.log(`Validation disabled for ${subfolderConfig.path}. Skipping content validation.`);
   }
 
   // Rename file if it doesn't have .json extension
@@ -144,67 +100,6 @@ function findSubfolderConfig(key: string): BucketSubdirectory | null {
 }
 
 /**
- * Retrieve object content from S3
- */
-async function getObjectContent(bucket: string, key: string): Promise<string | null> {
-  try {
-    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    const response = await s3Client.send(command);
-    
-    if (!response.Body) {
-      return null;
-    }
-
-    // Convert stream to string
-    const bodyContents = await response.Body.transformToString();
-    return bodyContents;
-  } catch (error) {
-    console.error(`Error retrieving object ${key}:`, error);
-    return null;
-  }
-}
-
-/**
- * Validate that content is valid JSON
- */
-function validateJson(content: string): any | null {
-  try {
-    return JSON.parse(content);
-  } catch (error) {
-    return null;
-  }
-}
-
-/**
- * Validate JSON structure matches expected person data format
- * TODO: Implement actual validation logic based on person data schema
- * 
- * Expected structure from PeopleDataSource.ts (line 68 rawData):
- * Array of person objects with properties like:
- * - personid: string
- * - personBasic: { names: Array<{ nameType, firstName, lastName, ... }>, ... }
- * - email: Array<{ type, address, ... }>
- * - employeeInfo: { positions: Array<{ positionInfo: { BasicData, Department, ... } }> }
- * - studentInfo: { ... }
- * - etc.
- * 
- * For now, this validates that:
- * 1. The data is an array or has data nested in common response wrapper properties
- * 2. The array contains objects (not primitives)
- * 
- * In production, implement full schema validation against the CDM person API response structure.
- */
-function validateJsonStructure(jsonData: any): boolean {
-  // Hard-coded as requested - returns true pending proper implementation
-  // In production, validate structure like:
-  // - Check if jsonData is array or has data/items/response wrapper
-  // - Validate each person object has required fields (personid, personBasic, etc.)
-  // - Validate nested structures match expected schema
-  
-  return true;
-}
-
-/**
  * Rename object to have .json extension
  */
 async function renameToJsonExtension(bucket: string, key: string): Promise<string | null> {
@@ -247,37 +142,6 @@ async function renameObject(bucket: string, oldKey: string, newKey: string): Pro
   } catch (error) {
     console.error(`Error renaming object from ${oldKey} to ${newKey}:`, error);
     return false;
-  }
-}
-
-/**
- * Move object to errors subfolder within the same parent folder
- * Uses timestamp-based naming with 'invalid-json' prefix
- */
-async function moveToErrorsSubfolder(bucket: string, key: string, subfolderPath: string, reason: string): Promise<void> {
-  try {
-    // Generate timestamp-based error filename
-    const timestamp = new Date().toISOString();
-    const errorKey = `${subfolderPath}/errors/invalid-json-${timestamp}.json`;
-    
-    // Copy to errors subfolder with timestamp-based name
-    await s3Client.send(new CopyObjectCommand({
-      Bucket: bucket,
-      CopySource: `${bucket}/${key}`,
-      Key: errorKey,
-      TaggingDirective: 'REPLACE',
-      Tagging: `error-reason=${encodeURIComponent(reason)}`
-    }));
-
-    // Delete original
-    await s3Client.send(new DeleteObjectCommand({
-      Bucket: bucket,
-      Key: key
-    }));
-
-    console.log(`Moved ${key} to errors subfolder: ${errorKey} (Reason: ${reason})`);
-  } catch (error) {
-    console.error(`Error moving ${key} to errors subfolder:`, error);
   }
 }
 

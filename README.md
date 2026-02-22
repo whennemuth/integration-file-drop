@@ -35,7 +35,7 @@ graph LR
         B2[External System<br/>SnapLogic/CDM] -->|4. Gather Data| B2P[Data Ready]
         B2P -->|5. Upload JSON File| C[S3 Bucket<br/>data-full/<br/>data-delta/]
         C -->|6. S3 Event Trigger| D[Event Processor Lambda<br/>Lambda #2]
-        D -->|7. Validate & Process| DP[Validation Complete<br/>• JSON validated<br/>• File renamed<br/>• Lifecycle rule applies]
+    D -->|7. Process & Rename| DP[Processing Complete<br/>• File renamed<br/>• Lifecycle rule applies]
         DP -->|8. Invoke with S3 Path| E[Target Lambda<br/>data-full or data-delta]
         E <-->|9. Read from S3<br/>Process Data| C
     end
@@ -66,20 +66,18 @@ Edit `context/context.json` to configure:
   - **objectLifetimeDays**: Days before objects expire (subfolder-specific)
   - **targetLambdaArn**: Lambda ARN to invoke for this subfolder's files
   - **targetLambdaExecutionRoleArn**: Execution role ARN of the target Lambda (for S3 bucket permissions)
-  - **validateArrivals** (optional, default: false): When `true`, downloads and validates JSON syntax/structure before processing. **Note**: Validation requires downloading entire files, which impacts performance and costs for large files (multi-GB). Consider increasing `LAMBDA.memorySizeMb` to 1024+ MB when enabling validation for large files.
   
   **Note**: Both Lambda ARN and execution role ARN are required:
   - `targetLambdaArn` is used by the event processor to invoke the Lambda function
   - `targetLambdaExecutionRoleArn` is used in the S3 bucket policy to grant read permissions (bucket policies require IAM role ARNs as principals, not Lambda function ARNs)
 - **LAMBDA**: Timeout and memory settings
   - **timeoutSeconds** (optional, default: 300): Lambda execution timeout
-  - **memorySizeMb** (optional, default: 512): Lambda memory allocation. **Increase to 1024-3008 MB if enabling `validateArrivals` for subdirectories with large files (multi-GB)**
+  - **memorySizeMb** (optional, default: 512): Lambda memory allocation
 - **TAGS**: Resource tags for organization
 - **CREATE_TEST_TARGET_LAMBDA** (optional): When set to `true`, creates a test Lambda function that logs event payloads and reads S3 objects to count items in rawData. Useful for testing the event processor without deploying actual target Lambdas.
 
 ### Example Configuration
 
-**Basic configuration (no validation - recommended for large files)**:
 ```json
 {
   "BUCKET": {
@@ -104,28 +102,6 @@ Edit `context/context.json` to configure:
     "memorySizeMb": 512
   },
   "CREATE_TEST_TARGET_LAMBDA": true
-}
-```
-
-**With validation enabled (for smaller files or when validation is critical)**:
-```json
-{
-  "BUCKET": {
-    "name": "huron-file-drop",
-    "subdirectories": [
-      {
-        "path": "data-full",
-        "objectLifetimeDays": 7,
-        "validateArrivals": true,
-        "targetLambdaArn": "arn:aws:lambda:us-east-1:123456789012:function:data-processor-dev",
-        "targetLambdaExecutionRoleArn": "arn:aws:iam::123456789012:role:data-processor-role"
-      }
-    ]
-  },
-  "LAMBDA": {
-    "timeoutSeconds": 300,
-    "memorySizeMb": 2048
-  }
 }
 ```
 
@@ -263,26 +239,6 @@ This allows external systems to continue using the same credentials across stack
 - `EventProcessorLambdaArn`: Event processor Lambda ARN
 - `TestTargetLambdaArn`: Test target Lambda ARN (when `CREATE_TEST_TARGET_LAMBDA` is true)
 - `TestTargetLambdaRoleArn`: Test target Lambda execution role ARN (when `CREATE_TEST_TARGET_LAMBDA` is true) - use this value for `targetLambdaExecutionRoleArn` when testing
-
-## Error Handling
-
-**Note**: Error handling only applies when `validateArrivals: true` is set for a subdirectory.
-
-Invalid files are automatically moved to `{subfolder}/errors/` subdirectory with timestamp-based naming:
-
-**Naming Convention**: `invalid-json-{ISO_TIMESTAMP}.json`
-- Example: `data-delta/errors/invalid-json-2026-02-20T17:53:57.172Z.json`
-
-**Error Types**:
-- Invalid JSON format (syntax errors)
-- Invalid JSON structure (doesn't match expected data schema)
-
-**Error File Metadata**:
-- Tagged with `error-reason` describing the validation failure
-- Subject to same lifecycle expiration as valid files in that subdirectory
-- Not processed again (automatically skipped to prevent reprocessing loops)
-
-For example, an invalid file uploaded to `data-full/test-data.json` would be moved to `data-full/errors/invalid-json-2026-02-20T10:15:30.456Z.json` and deleted after 7 days.
 
 ## Object Lifecycle
 
