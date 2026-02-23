@@ -57,14 +57,32 @@ export class FileDropBucket extends Construct {
   /**
    * Create lifecycle rules for automatic object expiration
    * Each subdirectory gets its own rule with specific retention period
+   * If errorObjectLifetimeDays is specified, creates separate rule for errors subfolder
    */
   private createLifecycleRules(context: IContext) {
-    return context.BUCKET.subdirectories.map((subdir, index) => ({
-      id: `expire-${subdir.path}`,
-      enabled: true,
-      prefix: `${subdir.path}/`,
-      expiration: Duration.days(subdir.objectLifetimeDays)
-    }));
+    const rules: any[] = [];
+    
+    context.BUCKET.subdirectories.forEach((subdir, index) => {
+      // Main subdirectory lifecycle rule  
+      rules.push({
+        id: `expire-${subdir.path}`,
+        enabled: true,
+        prefix: `${subdir.path}/`,
+        expiration: Duration.days(subdir.objectLifetimeDays)
+      });
+      
+      // Separate lifecycle rule for errors subdirectory if configured
+      if (subdir.errorObjectLifetimeDays && subdir.errorObjectLifetimeDays !== subdir.objectLifetimeDays) {
+        rules.push({
+          id: `expire-${subdir.path}-errors`,
+          enabled: true,
+          prefix: `${subdir.path}/errors/`,
+          expiration: Duration.days(subdir.errorObjectLifetimeDays)
+        });
+      }
+    });
+    
+    return rules;
   }
 
   /**

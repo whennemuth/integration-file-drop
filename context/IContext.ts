@@ -29,17 +29,7 @@ export interface IContext {
     Ticket?: string;
   };
 
-  /**
-   * S3 bucket configuration
-   */
-  BUCKET: {
-    name?: string; // Base bucket name (actual bucket will have stack ID and landscape appended)
-    subdirectories: BucketSubdirectory[];
-    access?: {
-      username: string;
-      secretArn: string;
-    }
-  };
+  BUCKET: BucketConfig;
 
   /**
    * Lambda configuration
@@ -56,6 +46,18 @@ export interface IContext {
      */
     subscriberForTesting?: LambdaConfig;
   };
+}
+
+/**
+ * S3 bucket configuration
+ */
+export type BucketConfig = {
+  name?: string; // Base bucket name (actual bucket will have stack ID and landscape appended)
+  subdirectories: BucketSubdirectory[];
+  access?: {
+    username: string;
+    secretArn: string;
+  }
 }
 
 export type LambdaConfig = {
@@ -82,6 +84,14 @@ export type BucketSubdirectory = {
    * Enforced by S3 bucket lifecycle rules
    */
   objectLifetimeDays: number;
+
+  /**
+   * Number of days before error objects are automatically deleted
+   * Applies to files moved to {subfolder}/errors/ subdirectory
+   * If omitted, inherits objectLifetimeDays value
+   * Useful for retaining failed files longer for debugging
+   */
+  errorObjectLifetimeDays?: number;
 
   /**
    * Lambda function ARN to invoke after successful processing
