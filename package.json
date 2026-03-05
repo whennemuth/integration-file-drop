@@ -6,6 +6,7 @@
     "integration-huron-file-drop": "bin/App.js"
   },
   "scripts": {
+    "clearcache": "sh bin/clear-cache.sh",
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
