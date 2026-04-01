@@ -31,10 +31,12 @@ export class S3EventProcessor {
 
   /**
    * Strict ISO 8601 timestamp pattern for recursion detection
-   * Format: YYYY-MM-DDTHH:mm:ss.SSSZ-
-   * Example: 2026-02-22T10:30:00.000Z-filename.json
+   * Format: YYYY-MM-DDTHH:mm:ss.SSSZ with optional hyphen separator
+   * Examples: 
+   *   2026-02-22T10:30:00.000Z-filename.json
+   *   2026-02-22T10:30:00.000Z.json
    */
-  private static readonly TIMESTAMP_PREFIX_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z-/;
+  private static readonly TIMESTAMP_PREFIX_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z-?/;
 
   constructor(
     record: S3EventRecord,
